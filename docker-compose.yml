@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  broker:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_MULTIPLE_DATABASES: orderdb,paymentdb,inventorydb,shippingdb
+    volumes:
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order_service:
+    build: ./order-service
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=${ORDER_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${ORDER_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${ORDER_DB_PASSWORD}
+      - SPRING_RABBITMQ_HOST=${SPRING_RABBITMQ_HOST}
+    depends_on:
+      broker:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+
+  payment_service:
+    build: ./payment-service
+    environment:
+      - SPRING_DATASOURCE_URL=${PAYMENT_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${PAYMENT_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${PAYMENT_DB_PASSWORD}
+      - SPRING_RABBITMQ_HOST=${SPRING_RABBITMQ_HOST}
+    depends_on:
+      broker:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+
+  inventory_service:
+    build: ./inventory-service
+    environment:
+      - SPRING_DATASOURCE_URL=${INVENTORY_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${INVENTORY_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${INVENTORY_DB_PASSWORD}
+      - SPRING_RABBITMQ_HOST=${SPRING_RABBITMQ_HOST}
+    depends_on:
+      broker:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+
+  shipping_service:
+    build: ./shipping-service
+    environment:
+      - SPRING_DATASOURCE_URL=${SHIPPING_DB_URL}
+      - SPRING_DATASOURCE_USERNAME=${SHIPPING_DB_USER}
+      - SPRING_DATASOURCE_PASSWORD=${SHIPPING_DB_PASSWORD}
+      - SPRING_RABBITMQ_HOST=${SPRING_RABBITMQ_HOST}
+    depends_on:
+      broker:
+        condition: service_healthy
+      postgres-db:
+        condition: service_healthy
+
+  notification_service:
+    build: ./notification-service
+    environment:
+      - SPRING_RABBITMQ_HOST=${SPRING_RABBITMQ_HOST}
+    depends_on:
+      broker:
+        condition: service_healthy
